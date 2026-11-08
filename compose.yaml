@@ -1,0 +1,14 @@
+# Kafka와 일반 PostgreSQL은 공유 인프라를 사용하며 이 Compose는 AI 앱만 실행합니다.
+services:
+  ai:
+    build: .
+    env_file: .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8086:8086"
+    environment:
+      DB_URL: jdbc:postgresql://host.docker.internal:5433/ai_service
+      EUREKA_DEFAULT_ZONE: http://host.docker.internal:8761/eureka/
+      ACCOUNT_JWKS_URI: http://host.docker.internal:8080/.well-known/jwks.json
+      KAFKA_BOOTSTRAP_SERVERS: host.docker.internal:19092

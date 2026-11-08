@@ -1,0 +1,17 @@
+eureka:
+  client:
+    enabled: false
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+ai:
+  ga:
+    # 자동 테스트는 실제 Google 데이터셋과 과금 쿼리에 접근하지 않습니다.
+    enabled: false
+  vision:
+    enabled: false
+  auth:
+    issuer: https://account.test
+    audience: stockdrop-api
+    jwk-set-uri: http://localhost:1/.well-known/jwks.json
