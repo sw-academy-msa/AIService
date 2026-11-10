@@ -71,9 +71,12 @@ try {
     $result = $LASTEXITCODE
     if ($result -ne 0) { throw 'AI DB 초기화가 실패했습니다. 기존 데이터와 역할 비밀번호는 유지됩니다.' }
     # 기존 역할의 오래된 비밀번호를 성공으로 오인하지 않도록 실제 TCP 로그인을 확인합니다.
-    $login = $password | & docker exec -i $ContainerName sh -c 'IFS= read -r PGPASSWORD; export PGPASSWORD; exec psql -X -h "$HOSTNAME" -U ai -d ai_service -v ON_ERROR_STOP=1 -Atqc "select current_user"' 2>&1
+    # Windows 파이프의 CRLF가 비밀번호에 CR을 붙이지 않도록 첫 구분자를 LF로 고정합니다.
+    # SQL도 stdin으로 전달해 sh -c 내부의 중첩 인용 문제를 피하고 실제 TCP 인증은 유지합니다.
+    $loginInput = $password + "`nSELECT current_user;`n"
+    $login = $loginInput | & docker exec -i $ContainerName sh -c 'IFS= read -r PGPASSWORD; export PGPASSWORD; exec psql -X -h "$HOSTNAME" -U ai -d ai_service -v ON_ERROR_STOP=1 -At' 2>&1
     if ($LASTEXITCODE -ne 0 -or ($login -join '').Trim() -ne 'ai') {
         throw 'AI TCP 로그인 검증이 실패했습니다. 기존 역할의 비밀번호는 변경하지 않았습니다.'
     }
-} finally { $ErrorActionPreference = $previous }
+} finally { $ErrorActionPreference = $previous; $loginInput = $null }
 Write-Host '일반 PostgreSQL의 ai_service DB와 ai 전용 계정·스키마 연결을 확인했습니다.'
