@@ -98,7 +98,9 @@ Account에서 발급한 별도 Notification 서비스 토큰의 scope=ai.persona
 principal_type=service, client_id=notification-service, 지정 UUID subject를 모두 검증합니다.
 Account 기존 서비스 토큰 로직의 scope 허용 목록만 확장했고 실제 Notification 클라이언트나 비밀값은 등록하지 않았습니다.
 NOTIFICATION_SERVICE_SUBJECT 미설정 시 이 API는 차단됩니다. 사용자 JWT나 Order 토큰을 재사용하지 않습니다.
-Account의 배치 수신 자격 확인 API는 아직 없으며 Notification 구현 시 계약을 추가해야 합니다.
+Account에 내부 GET /internal/v1/notification-eligibility?accountId=UUID를 추가했습니다.
+Notification은 account.notifications.read와 ai.personalization.read를 함께 요청하고 기존 Account 발급 계약을 사용합니다.
+로컬 클라이언트 등록과 키 주입은 NotificationService의 명시적 설정 도구를 실행해야 하며 자동 운영 등록은 아닙니다.
 여러 서비스의 동의 변경과 외부 발송이 단일 DB 트랜잭션으로 묶이는 구조라고 표현하지 않습니다.
 
 ## Google 설정과 비용 보호
