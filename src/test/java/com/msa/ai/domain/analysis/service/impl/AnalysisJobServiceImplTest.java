@@ -100,6 +100,7 @@ class AnalysisJobServiceImplTest extends AiDatabaseTestSupport {
                 request.productId(),
                 request.sellerId(),
                 request.fingerprint(),
+                Outcome.RECOMMENDED,
                 "CLOTHING",
                 List.of(new Question(UUID.randomUUID(), "CLOTHING_MATERIAL", "소재를 알려주세요.", "누락")));
     }

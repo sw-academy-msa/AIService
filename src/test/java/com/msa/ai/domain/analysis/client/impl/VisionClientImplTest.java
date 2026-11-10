@@ -60,6 +60,25 @@ class VisionClientImplTest {
     }
 
     String response(String code, String questionCode) {
+        return response(
+                "RECOMMENDED",
+                code,
+                List.of(
+                        Map.of(
+                                "checkCode",
+                                questionCode,
+                                "question",
+                                "소재를 알려주세요.",
+                                "reason",
+                                "설명에 없습니다.")));
+    }
+
+    // categoryCode는 null일 수 있어 Map.of 대신 순서 있는 Map으로 만듭니다.
+    String response(String outcome, String code, List<Map<String, String>> questions) {
+        var answer = new LinkedHashMap<String, Object>();
+        answer.put("outcome", outcome);
+        answer.put("categoryCode", code);
+        answer.put("questions", questions);
         return json.writeValueAsString(
                 Map.of(
                         "status",
@@ -75,19 +94,15 @@ class VisionClientImplTest {
                                                         "type",
                                                         "output_text",
                                                         "text",
-                                                        json.writeValueAsString(
-                                                                Map.of(
-                                                                        "categoryCode",
-                                                                        code,
-                                                                        "questions",
-                                                                        List.of(
-                                                                                Map.of(
-                                                                                        "checkCode",
-                                                                                        questionCode,
-                                                                                        "question",
-                                                                                        "소재를 알려주세요.",
-                                                                                        "reason",
-                                                                                        "설명에 없습니다."))))))))));
+                                                        json.writeValueAsString(answer)))))));
+    }
+
+    VisionClientImpl parser() {
+        return new VisionClientImpl(
+                RestClient.create(),
+                new VisionProperties(true, "synthetic", "gpt-6.1-sol"),
+                images,
+                json);
     }
 
     @Test
@@ -120,8 +135,12 @@ class VisionClientImplTest {
                             json);
             var result = client.analyze(request);
             assertThat(result.questions()).hasSize(1);
+            assertThat(result.outcome()).isEqualTo(Outcome.RECOMMENDED);
             var body = json.readTree(captured.get());
             assertThat(body.path("model").asText()).isEqualTo("gpt-6.1-sol");
+            var schema = body.at("/text/format/schema");
+            assertThat(schema.at("/properties/outcome/enum").size()).isEqualTo(3);
+            assertThat(schema.path("required").toString()).contains("\"outcome\"");
             assertThat(body.path("store").asBoolean()).isFalse();
             assertThat(body.at("/text/format/strict").asBoolean()).isTrue();
             assertThat(body.at("/input/0/content/1/type").asText()).isEqualTo("input_image");
@@ -155,6 +174,45 @@ class VisionClientImplTest {
                                                         "incomplete",
                                                         "output",
                                                         List.of()))))
+                .isInstanceOf(AnalysisException.class);
+    }
+
+    /** 추천이 없는 결과도 null 대신 결과 구분으로 판매자에게 이유를 전달합니다. */
+    @Test
+    void notApplicableAndUnclearKeepReasonWithoutCategory() {
+        for (var outcome : List.of(Outcome.NOT_APPLICABLE, Outcome.UNCLEAR)) {
+            var result = parser().parse(request, response(outcome.name(), null, List.of()));
+            assertThat(result.outcome()).isEqualTo(outcome);
+            assertThat(result.recommendedCategory()).isNull();
+            assertThat(result.questions()).isEmpty();
+        }
+    }
+
+    /** 결과 구분과 카테고리·질문이 어긋나거나 구분이 없으면 모델 응답을 저장하지 않습니다. */
+    @Test
+    void rejectsOutcomeInconsistentWithCategory() {
+        var question =
+                List.of(
+                        Map.of(
+                                "checkCode",
+                                "CLOTHING_MATERIAL",
+                                "question",
+                                "소재를 알려주세요.",
+                                "reason",
+                                "설명에 없습니다."));
+        var client = parser();
+        assertThatThrownBy(() -> client.parse(request, response("RECOMMENDED", null, List.of())))
+                .isInstanceOf(AnalysisException.class);
+        assertThatThrownBy(
+                        () ->
+                                client.parse(
+                                        request, response("NOT_APPLICABLE", "CLOTHING", question)))
+                .isInstanceOf(AnalysisException.class);
+        assertThatThrownBy(() -> client.parse(request, response("UNCLEAR", null, question)))
+                .isInstanceOf(AnalysisException.class);
+        assertThatThrownBy(() -> client.parse(request, response("MAYBE", null, List.of())))
+                .isInstanceOf(AnalysisException.class);
+        assertThatThrownBy(() -> client.parse(request, response(null, null, List.of())))
                 .isInstanceOf(AnalysisException.class);
     }
 

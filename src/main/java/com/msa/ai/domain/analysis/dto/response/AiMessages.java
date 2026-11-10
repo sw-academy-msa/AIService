@@ -45,12 +45,24 @@ public final class AiMessages {
     @Builder
     public record Question(UUID suggestionId, String checkCode, String question, String reason) {}
 
+    /** 추천 여부를 null 대신 명시합니다. 모델 호출 실패는 결과가 아니라 작업 상태(RETRY)로 표현합니다. */
+    public enum Outcome {
+        // 허용 카테고리 하나를 추천했습니다.
+        RECOMMENDED,
+        // 이미지가 허용된 상품 카테고리에 해당하지 않습니다.
+        NOT_APPLICABLE,
+        // 이미지가 불명확해 카테고리를 판단할 수 없습니다.
+        UNCLEAR
+    }
+
+    // RECOMMENDED일 때만 recommendedCategory가 있고, 나머지는 카테고리 없이 빈 질문 목록입니다.
     @Builder
     public record Completed(
             UUID requestId,
             UUID productId,
             UUID sellerId,
             String fingerprint,
+            Outcome outcome,
             String recommendedCategory,
             List<Question> questions) {}
 }

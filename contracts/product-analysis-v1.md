@@ -21,7 +21,9 @@ FAQ 저장은 Product가 결과 이벤트를 수신한 뒤 가능합니다. AI �
 추천 카테고리만 수락한 변경은 허용하지만 설명이나 이미지 변경 시 다시 분석해야 합니다.
 상품 버전이 다른 단계 저장으로만 바뀐 경우 입력 지문이 같으면 질문을 재사용할 수 있습니다.
 AI 질문이 없는 경우도 정상 완료이며 FAQ는 필수 등록 항목이 아닙니다.
-사진이 불명확하거나 허용 범위 밖이면 recommendedCategory:null과 빈 질문으로 반환하며 판매자가 이미지를 보완하고 직접 분류합니다.
+결과의 outcome은 RECOMMENDED(카테고리 추천), NOT_APPLICABLE(허용 카테고리 상품이 아님), UNCLEAR(이미지 불명확) 중 하나입니다.
+RECOMMENDED만 recommendedCategory를 가지며, NOT_APPLICABLE·UNCLEAR는 recommendedCategory:null과 빈 질문으로 반환하고 판매자가 이미지를 보완하거나 직접 분류합니다.
+outcome은 v1에 추가된 필드이며 Product는 outcome이 없는 이전 메시지를 recommendedCategory로만 판단합니다. 모델 호출 실패는 결과가 아니라 작업 재시도(RETRY)로 처리합니다.
 AI 결과는 심사 상태를 변경하지 않고 판매자 답변도 운영자 승인을 대신하지 않습니다.
 
 ## 입력과 제한

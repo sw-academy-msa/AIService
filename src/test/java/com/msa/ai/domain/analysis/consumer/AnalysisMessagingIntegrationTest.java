@@ -109,6 +109,7 @@ class AnalysisMessagingIntegrationTest extends AiDatabaseTestSupport {
                         product,
                         request.sellerId(),
                         request.fingerprint(),
+                        Outcome.RECOMMENDED,
                         "CLOTHING",
                         List.of(
                                 new Question(
