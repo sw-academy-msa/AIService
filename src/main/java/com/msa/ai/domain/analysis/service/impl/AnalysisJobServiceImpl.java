@@ -134,7 +134,7 @@ public class AnalysisJobServiceImpl implements AnalysisJobService {
                 || r.input() == null
                 || r.categories() == null
                 || r.categories().isEmpty()
-                || r.categories().size() > 100) fail();
+                || r.categories().size() > 512) fail();
         var i = r.input();
         if (blank(i.name())
                 || i.name().length() > 200

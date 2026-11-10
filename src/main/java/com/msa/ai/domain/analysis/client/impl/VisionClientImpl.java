@@ -179,19 +179,8 @@ public class VisionClientImpl implements VisionClient {
                         false,
                         "properties",
                         Map.of(
-                                "checkCode",
-                                Map.of(
-                                        "type",
-                                        "string",
-                                        "enum",
-                                        request.categories().stream()
-                                                .flatMap(c -> c.checks().stream())
-                                                .map(Check::code)
-                                                .toList()),
-                                "question",
-                                string,
-                                "reason",
-                                string),
+                                // 전체 점검 코드 enum은 모델 스키마 한도를 넘으므로 기존 parse에서 분류별 코드를 검증합니다.
+                                "checkCode", string, "question", string, "reason", string),
                         "required",
                         List.of("checkCode", "question", "reason"));
         var categoryCodes =

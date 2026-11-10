@@ -215,4 +215,50 @@ class AnalysisJobServiceImplTest extends AiDatabaseTestSupport {
                 .andExpect(jsonPath("$.code").value("COMMON_SUCCESS"))
                 .andExpect(jsonPath("$.data.status").value("PENDING"));
     }
+
+    /** 확장된 허용 목록을 영속 접수하면서 무제한 목록 입력은 기존처럼 거부합니다. */
+    @Test
+    void acceptsExpandedCatalogAndRejectsUnboundedCatalog() {
+        var categories =
+                java.util.stream.IntStream.range(0, 255)
+                        .mapToObj(
+                                i ->
+                                        new Category(
+                                                "SYNTHETIC_" + i,
+                                                "합성 분류 " + i,
+                                                List.of(
+                                                        new Check(
+                                                                "SYNTHETIC_CHECK_" + i,
+                                                                "규격을 알려주세요."))))
+                        .toList();
+        var expanded =
+                new Requested(
+                        UUID.randomUUID(),
+                        request.productId(),
+                        request.sellerId(),
+                        request.productVersion(),
+                        request.fingerprint(),
+                        request.occurredAt(),
+                        request.input(),
+                        categories);
+        jobs.accept(expanded);
+        assertThat(repository.findById(expanded.requestId())).isPresent();
+        var tooMany =
+                java.util.stream.IntStream.range(0, 513)
+                        .mapToObj(
+                                i -> new Category("SYNTHETIC_" + i, "합성 분류 " + i, List.<Check>of()))
+                        .toList();
+        var rejected =
+                new Requested(
+                        UUID.randomUUID(),
+                        request.productId(),
+                        request.sellerId(),
+                        request.productVersion(),
+                        request.fingerprint(),
+                        request.occurredAt(),
+                        request.input(),
+                        tooMany);
+        assertThatThrownBy(() -> jobs.accept(rejected)).isInstanceOf(AnalysisException.class);
+        assertThat(repository.findById(rejected.requestId())).isEmpty();
+    }
 }

@@ -23,7 +23,8 @@ public class AnalysisRequestConsumer {
 
     @KafkaListener(topics = AiMessages.REQUEST_TOPIC, groupId = "ai-product-analysis-v1")
     public void receive(byte[] payload) {
-        if (payload.length > 131072) throw new IllegalArgumentException("AI 입력 크기 제한 초과");
+        // Product의 카테고리 기준표 확장과 동일한 1 MiB 기술 상한입니다.
+        if (payload.length > 1048576) throw new IllegalArgumentException("AI 입력 크기 제한 초과");
         try {
             service.accept(json.readValue(payload, AiMessages.Requested.class));
         } catch (RuntimeException exception) {

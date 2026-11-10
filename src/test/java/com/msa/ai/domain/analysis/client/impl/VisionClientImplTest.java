@@ -157,4 +157,66 @@ class VisionClientImplTest {
                                                         List.of()))))
                 .isInstanceOf(AnalysisException.class);
     }
+
+    /** 공급자 enum 한도를 넘는 점검 기준도 전달하고 선택 가능한 카테고리 enum은 유지합니다. */
+    @Test
+    void expandedCatalogUsesBoundedSchemaAndStillSendsImages() throws Exception {
+        var list = new ArrayList<Category>(request.categories());
+        for (int n = 1; n < 255; n++) {
+            var checks = new ArrayList<Check>();
+            for (int j = 0; j < 4; j++)
+                checks.add(new Check("SYNTHETIC_" + n + "_CHECK_" + j, "정보를 알려주세요."));
+            list.add(new Category("SYNTHETIC_" + n, "합성 분류 " + n, checks));
+        }
+        var expanded =
+                new Requested(
+                        request.requestId(),
+                        request.productId(),
+                        request.sellerId(),
+                        request.productVersion(),
+                        request.fingerprint(),
+                        request.occurredAt(),
+                        request.input(),
+                        list);
+        var captured = new AtomicReference<String>();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext(
+                "/responses",
+                e -> {
+                    captured.set(
+                            new String(e.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                    byte[] bytes =
+                            response("CLOTHING", "CLOTHING_MATERIAL")
+                                    .getBytes(StandardCharsets.UTF_8);
+                    e.getResponseHeaders().set("Content-Type", "application/json");
+                    e.sendResponseHeaders(200, bytes.length);
+                    e.getResponseBody().write(bytes);
+                    e.close();
+                });
+        server.start();
+        try {
+            when(images.dataUrl(any())).thenReturn("data:image/jpeg;base64,c3ludGhldGlj");
+            var client =
+                    new VisionClientImpl(
+                            RestClient.builder()
+                                    .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
+                                    .build(),
+                            new VisionProperties(true, "synthetic-key", "gpt-6.1-sol"),
+                            images,
+                            json);
+            assertThat(client.analyze(expanded).recommendedCategory()).isEqualTo("CLOTHING");
+            var body = json.readTree(captured.get());
+            assertThat(body.at("/text/format/schema/properties/categoryCode/enum").size())
+                    .isEqualTo(256);
+            var check =
+                    body.at("/text/format/schema/properties/questions/items/properties/checkCode");
+            assertThat(check.path("type").asText()).isEqualTo("string");
+            assertThat(check.has("enum")).isFalse();
+            String input = body.at("/input/0/content/0/text").asText();
+            assertThat(json.readTree(input).path("categoryCriteria").size()).isEqualTo(255);
+            assertThat(body.at("/input/0/content/1/type").asText()).isEqualTo("input_image");
+        } finally {
+            server.stop(0);
+        }
+    }
 }
