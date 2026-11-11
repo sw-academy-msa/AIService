@@ -36,3 +36,5 @@ GA 수집은 프런트 태그와 Google BigQuery 내보내기 설정이 별도�
 [GA 수집·참여 API·Google 설정·알림 후보 계약](contracts/ga-category-recommendations-v1.md)을 확인합니다.
 구매자 실시간 챗봇은 구현하지 않았습니다.
 Git init, add, commit, push는 실행하지 않습니다.
+
+카테고리 목록은 Product Command에서 기존 분석 요청으로 받습니다. 255개 분류를 수용하며 벡터 DB, 임베딩과 GA 추천 로직 변경은 포함하지 않습니다.
