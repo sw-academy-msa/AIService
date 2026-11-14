@@ -21,11 +21,12 @@ values (:id,:product,:seller,:payload,'PENDING',0,:now,:now) on conflict (id) do
             nativeQuery = true)
     int insertOnce(UUID id, UUID product, UUID seller, String payload, Instant now);
 
+    // 완료는 결과와 COMPLETED를 함께 저장하므로 미완료 상태로 찾습니다. 상태값을 추가하면 이 목록도 갱신합니다.
     @Query(
             value =
                     """
-select * from ai.analysis_jobs where result_payload is null and next_attempt_at <= :now
-and (lease_until is null or lease_until <= :now) order by created_at,id
+select * from ai.analysis_jobs where status in ('PENDING','RUNNING','RETRY')
+and next_attempt_at <= :now and (lease_until is null or lease_until <= :now) order by created_at,id
 limit 1 for update skip locked
 """,
             nativeQuery = true)
