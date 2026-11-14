@@ -4,6 +4,12 @@ spring:
     name: ai-service
   profiles:
     default: local
+  # 테이블 변경은 db/migration의 버전 SQL로 관리합니다.
+  flyway:
+    locations: classpath:db/migration
+    default-schema: ai
+    schemas: ai
+    create-schemas: true
   jpa:
     open-in-view: false
     properties:
