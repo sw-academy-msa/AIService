@@ -13,10 +13,13 @@ import java.util.UUID;
         name = "category_interests",
         schema = "ai",
         uniqueConstraints = @UniqueConstraint(columnNames = {"batch_id", "identity_account_id"}),
-        indexes =
-                @Index(
-                        name = "idx_interest_audience",
-                        columnList = "batch_id,category_name,analytics_id"))
+        indexes = {
+            @Index(
+                    name = "idx_interest_audience",
+                    columnList = "batch_id,category_name,analytics_id"),
+            // 동의 철회 시 계정의 관심 기록을 배치와 무관하게 삭제합니다.
+            @Index(name = "idx_interest_account", columnList = "identity_account_id")
+        })
 public class CategoryInterest {
     @Id public UUID id;
 
