@@ -1,0 +1,25 @@
+# 기존 일반 RDS의 AI 전용 계정·DB/스키마를 주입하며 운영 DDL은 별도로 준비합니다.
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:5}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+ai:
+  auth:
+    issuer: ${JWT_ISSUER}
+    jwk-set-uri: ${ACCOUNT_JWKS_URI}
+  images:
+    local: false
+    endpoint: ""
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_DEFAULT_ZONE}
+  instance:
+    hostname: ${SERVICE_HOSTNAME}
+    instance-id: ${spring.application.name}:${SERVICE_INSTANCE_ID}
