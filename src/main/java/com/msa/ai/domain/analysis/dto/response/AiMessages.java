@@ -12,12 +12,12 @@ public final class AiMessages {
     public static final String REQUEST_TOPIC = "stockdrop.product.analysis-requested.v1";
     public static final String RESULT_TOPIC = "stockdrop.ai.product-analyzed.v1";
 
+    // 판매처 URL은 모델에 전달하지 않아 받지 않습니다. 이전 요청의 sourceUrl 필드는 무시합니다.
     @Builder
     public record Input(
             String name,
             String description,
             String brandOrStore,
-            String sourceUrl,
             String category,
             String disposalReason,
             List<Image> images) {}
@@ -42,8 +42,15 @@ public final class AiMessages {
             Input input,
             List<Category> categories) {}
 
+    // checkCode는 점검 항목에 묶던 이전 결과에만 있고 구매자 질문 결과는 null입니다.
+    // suggestedAnswer는 판매자가 확인할 예상 답변 초안이며 근거가 없으면 null입니다.
     @Builder
-    public record Question(UUID suggestionId, String checkCode, String question, String reason) {}
+    public record Question(
+            UUID suggestionId,
+            String checkCode,
+            String question,
+            String reason,
+            String suggestedAnswer) {}
 
     /** 추천 여부를 null 대신 명시합니다. 모델 호출 실패는 결과가 아니라 작업 상태(RETRY)로 표현합니다. */
     public enum Outcome {

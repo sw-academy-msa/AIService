@@ -42,7 +42,8 @@ public class AnalysisJobServiceImpl implements AnalysisJobService {
         String payload = json.writeValueAsString(r);
         jobs.insertOnce(r.requestId(), r.productId(), r.sellerId(), payload, clock.instant());
         var stored = jobs.findById(r.requestId()).orElseThrow();
-        if (!stored.requestPayload.equals(payload)) fail();
+        // sourceUrl이 있던 이전 저장 형식도 내용이 같으면 같은 요청으로 봅니다.
+        if (!json.readValue(stored.requestPayload, Requested.class).equals(r)) fail();
     }
 
     public Optional<AnalysisWorkResponse> claim() {

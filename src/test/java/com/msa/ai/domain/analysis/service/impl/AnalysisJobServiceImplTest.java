@@ -76,7 +76,6 @@ class AnalysisJobServiceImplTest extends AiDatabaseTestSupport {
                                 "합성 상품",
                                 "설명입니다.",
                                 "합성 스토어",
-                                null,
                                 "의류",
                                 "잉여 재고 정리",
                                 List.of(
@@ -102,7 +101,9 @@ class AnalysisJobServiceImplTest extends AiDatabaseTestSupport {
                 request.fingerprint(),
                 Outcome.RECOMMENDED,
                 "CLOTHING",
-                List.of(new Question(UUID.randomUUID(), "CLOTHING_MATERIAL", "소재를 알려주세요.", "누락")));
+                List.of(
+                        new Question(
+                                UUID.randomUUID(), null, "흠집이 있나요?", "사진 근거", "판매자 확인 필요")));
     }
 
     @Test
@@ -112,6 +113,23 @@ class AnalysisJobServiceImplTest extends AiDatabaseTestSupport {
         assertThat(repository.count()).isEqualTo(1);
         assertThat(jobs.claim()).isPresent();
         assertThat(jobs.claim()).isEmpty();
+    }
+
+    /** sourceUrl이 있던 이전 저장 요청이 다시 와도 같은 요청으로 보고 작업을 늘리지 않습니다. */
+    @Test
+    void legacyStoredRequestWithSourceUrlIsSameRequest() {
+        jobs.accept(request);
+        tx.executeWithoutResult(
+                s -> {
+                    var job = repository.findById(request.requestId()).orElseThrow();
+                    job.requestPayload =
+                            job.requestPayload.replace("\"name\":", "\"sourceUrl\":null,\"name\":");
+                });
+        assertThat(repository.findById(request.requestId()).orElseThrow().requestPayload)
+                .contains("sourceUrl");
+        jobs.accept(request);
+        assertThat(repository.count()).isEqualTo(1);
+        assertThat(jobs.claim().orElseThrow().request()).isEqualTo(request);
     }
 
     @Test
@@ -174,7 +192,6 @@ class AnalysisJobServiceImplTest extends AiDatabaseTestSupport {
                         new Input(
                                 input.name(),
                                 input.description(),
-                                null,
                                 null,
                                 null,
                                 input.disposalReason(),
