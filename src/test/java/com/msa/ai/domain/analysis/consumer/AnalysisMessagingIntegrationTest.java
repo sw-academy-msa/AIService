@@ -83,7 +83,6 @@ class AnalysisMessagingIntegrationTest extends AiDatabaseTestSupport {
                                 "합성 상품",
                                 "설명",
                                 null,
-                                null,
                                 "의류",
                                 "재고 정리",
                                 List.of(
@@ -114,9 +113,10 @@ class AnalysisMessagingIntegrationTest extends AiDatabaseTestSupport {
                         List.of(
                                 new Question(
                                         UUID.randomUUID(),
-                                        "CLOTHING_MATERIAL",
-                                        "소재를 알려주세요.",
-                                        "설명에 없습니다.")));
+                                        null,
+                                        "사진 속 흠집은 어느 정도인가요?",
+                                        "첫 사진 모서리에 흠집이 보입니다.",
+                                        null)));
         when(vision.analyze(any())).thenReturn(result);
         assertThat(worker.runNext()).isTrue();
         // publishNext를 직접 호출하지 않고 실제 스케줄이 ack와 publishedAt을 기록할 때까지 확인합니다.
