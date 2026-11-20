@@ -15,4 +15,5 @@ public record AnalysisResponse(
         String status,
         int attempts,
         Instant nextAttemptAt,
+        String failureCode,
         AiMessages.Completed result) {}

@@ -178,7 +178,9 @@ public class VisionClientImpl implements VisionClient {
 
     // 스키마 enum 밖의 값은 공급자 계약 위반으로 처리합니다.
     private Outcome outcome(String value) {
-        for (var outcome : Outcome.values()) if (outcome.name().equals(value)) return outcome;
+        // 실패 종료는 모델 판단이 아니라 작업 시도 상한 정책입니다.
+        for (var outcome : Outcome.values())
+            if (outcome != Outcome.FAILED && outcome.name().equals(value)) return outcome;
         throw new AnalysisException(AnalysisErrorCode.INVALID);
     }
 
@@ -197,7 +199,9 @@ public class VisionClientImpl implements VisionClient {
         var categoryCodes =
                 new ArrayList<Object>(request.categories().stream().map(Category::code).toList());
         categoryCodes.add(null);
-        var outcomes = Arrays.stream(Outcome.values()).map(Outcome::name).toList();
+        // 모델의 분류 응답에는 작업 서비스 전용 FAILED를 제안하지 않습니다.
+        var outcomes = Arrays.stream(Outcome.values()).filter(o -> o != Outcome.FAILED)
+                .map(Outcome::name).toList();
         return Map.of(
                 "type",
                 "object",
