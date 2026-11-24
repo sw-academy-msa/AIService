@@ -139,6 +139,10 @@ class VisionClientImplTest {
             assertThat(result.outcome()).isEqualTo(Outcome.RECOMMENDED);
             var body = json.readTree(captured.get());
             assertThat(body.path("model").asText()).isEqualTo("gpt-6.1-sol");
+            var modelInput = json.readTree(body.at("/input/0/content/0/text").asText());
+            assertThat(modelInput.path("basicInformation").has("category")).isFalse();
+            assertThat(modelInput.path("basicInformation").size()).isEqualTo(3);
+            assertThat(modelInput.path("categoryCriteria").size()).isEqualTo(1);
             var schema = body.at("/text/format/schema");
             assertThat(schema.at("/properties/outcome/enum").size()).isEqualTo(3);
             assertThat(schema.path("required").toString()).contains("\"outcome\"");
@@ -154,6 +158,8 @@ class VisionClientImplTest {
             assertThat(item.path("properties").has("checkCode")).isFalse();
             String instructions = body.path("instructions").asText();
             assertThat(instructions)
+                    .contains("카테고리는 네가 추천한 값으로 정해진다.",
+                            "판매자의 카테고리 선택이나 카테고리와 사진, 상품명, 설명의 불일치는 질문하지 않는다.")
                     .contains("구매자가 이 상품을 사기 전에", "질문하지 않는다", "최대 5개", "빈 문자열로 반환")
                     .contains("보통 3~5개", "정말 없을 때만", "같은 주제를 두 번 묻지 않고")
                     .contains("뒷면, 안쪽, 작동 여부, 부속 상태", "어떤 용도나 상황", "유통 기간")
