@@ -40,7 +40,13 @@ public class CampaignEligibilityClientImpl implements CampaignEligibilityClient 
                         null);
         if (response.status() == 401) tokens.invalidate();
         if (response.status() != 200) throw new RemoteUnavailable();
-        var body = json.readTree(response.body());
+        tools.jackson.databind.JsonNode body;
+        try {
+            body = json.readTree(response.body());
+        } catch (RuntimeException malformed) {
+            // 깨진 응답도 확인 불가로 보고 다음 회차에 다시 묻습니다.
+            throw new RemoteUnavailable();
+        }
         if (!body.path("success").asBoolean() || !body.path("data").path("eligible").isBoolean())
             throw new RemoteUnavailable();
         return body.path("data").path("eligible").asBoolean();
