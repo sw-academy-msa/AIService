@@ -29,7 +29,7 @@ import java.time.Instant;
 import java.util.*;
 
 /** 실제 DB에서 요청 중복·임대 만료·Outbox 원자성·판매자 소유권을 검증합니다. 실제 모델은 호출하지 않습니다. */
-@SpringBootTest(properties = "springdoc.api-docs.enabled=true")
+@SpringBootTest(properties = {"springdoc.api-docs.enabled=true", "ai.behavior.enabled=true"})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class AnalysisJobServiceImplTest extends AiDatabaseTestSupport {
@@ -101,9 +101,7 @@ class AnalysisJobServiceImplTest extends AiDatabaseTestSupport {
                 request.fingerprint(),
                 Outcome.RECOMMENDED,
                 "CLOTHING",
-                List.of(
-                        new Question(
-                                UUID.randomUUID(), null, "흠집이 있나요?", "사진 근거", "판매자 확인 필요")));
+                List.of(new Question(UUID.randomUUID(), null, "흠집이 있나요?", "사진 근거", "판매자 확인 필요")));
     }
 
     @Test
@@ -115,8 +113,14 @@ class AnalysisJobServiceImplTest extends AiDatabaseTestSupport {
             assertThat(worker.runNext()).isTrue();
             assertThat(jobs.get(request.sellerId(), request.requestId()).status())
                     .isEqualTo(attempt == 5 ? "FAILED" : "RETRY");
-            if (attempt < 5) tx.executeWithoutResult(s -> repository.findById(request.requestId()).orElseThrow()
-                    .nextAttemptAt = Instant.now().minusSeconds(1));
+            if (attempt < 5)
+                tx.executeWithoutResult(
+                        s ->
+                                repository
+                                                .findById(request.requestId())
+                                                .orElseThrow()
+                                                .nextAttemptAt =
+                                        Instant.now().minusSeconds(1));
         }
         assertThat(worker.runNext()).isFalse();
         verify(vision, times(5)).analyze(any());
@@ -124,9 +128,12 @@ class AnalysisJobServiceImplTest extends AiDatabaseTestSupport {
         assertThat(jobs.get(request.sellerId(), request.requestId()).nextAttemptAt()).isNull();
         assertThat(outbox.findById(request.requestId()).orElseThrow().payload)
                 .contains("FAILED", "AI_ANALYSIS_ATTEMPTS_EXHAUSTED");
-        mvc.perform(get("/api/v1/ai/product-analyses/" + request.requestId())
-                        .with(jwt().jwt(j -> j.subject(request.sellerId().toString()))
-                                .authorities(new SimpleGrantedAuthority("ROLE_SELLER"))))
+        mvc.perform(
+                        get("/api/v1/ai/product-analyses/" + request.requestId())
+                                .with(
+                                        jwt().jwt(j -> j.subject(request.sellerId().toString()))
+                                                .authorities(
+                                                        new SimpleGrantedAuthority("ROLE_SELLER"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("FAILED"))
                 .andExpect(jsonPath("$.data.attempts").value(5))
@@ -138,12 +145,13 @@ class AnalysisJobServiceImplTest extends AiDatabaseTestSupport {
     // 다섯 번째 점유가 중단되거나 구버전이 이미 상한을 넘겼어도 여섯 번째 모델 실행은 하지 않습니다.
     void exhaustedExpiredLeaseOrLegacyRetryEndsWithoutAnotherClaim() {
         jobs.accept(request);
-        tx.executeWithoutResult(s -> {
-            var j = repository.findById(request.requestId()).orElseThrow();
-            j.attempts = 5;
-            j.status = "RUNNING";
-            j.leaseUntil = Instant.now().minusSeconds(1);
-        });
+        tx.executeWithoutResult(
+                s -> {
+                    var j = repository.findById(request.requestId()).orElseThrow();
+                    j.attempts = 5;
+                    j.status = "RUNNING";
+                    j.leaseUntil = Instant.now().minusSeconds(1);
+                });
         assertThat(jobs.claim()).isEmpty();
         assertThat(jobs.get(request.sellerId(), request.requestId()).status()).isEqualTo("FAILED");
         assertThat(outbox.count()).isEqualTo(1);

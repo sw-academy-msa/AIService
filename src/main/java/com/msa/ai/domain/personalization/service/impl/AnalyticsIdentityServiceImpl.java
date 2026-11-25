@@ -85,7 +85,10 @@ public class AnalyticsIdentityServiceImpl implements AnalyticsIdentityService {
     @Transactional(readOnly = true)
     public AnalyticsEligibilityResponse eligible(UUID account, UUID analytics) {
         return AnalyticsEligibilityResponse.builder()
-                .analyticsEnabled(identities.active(analytics, account) > 0)
+                .analyticsEnabled(
+                        analytics == null
+                                ? identities.existsById(account)
+                                : identities.active(analytics, account) > 0)
                 .build();
     }
 }

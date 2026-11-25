@@ -43,6 +43,7 @@ public class OutboxEvent {
     public Instant nextAttemptAt;
 
     public Instant publishedAt;
+    public Instant failedAt;
     public int attempts;
 
     protected OutboxEvent() {}

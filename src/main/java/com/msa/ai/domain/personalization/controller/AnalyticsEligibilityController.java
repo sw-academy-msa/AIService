@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 /** Notification의 발송 직전 내부 검증입니다. 외부 Gateway에 라우팅하지 않습니다. */
+@io.swagger.v3.oas.annotations.Hidden
 @RestController
 @RequestMapping(value = "/internal/v1/personalization/eligibility", produces = "application/json")
 public class AnalyticsEligibilityController {
@@ -26,7 +27,7 @@ public class AnalyticsEligibilityController {
     public ApiResponse<AnalyticsEligibilityResponse> get(
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam UUID accountId,
-            @RequestParam UUID analyticsId) {
+            @RequestParam(required = false) UUID analyticsId) {
         AnalyticsEligibilityResponse response = service.eligible(accountId, analyticsId);
         return ApiResponse.onSuccess(response, SuccessCode.OK);
     }
