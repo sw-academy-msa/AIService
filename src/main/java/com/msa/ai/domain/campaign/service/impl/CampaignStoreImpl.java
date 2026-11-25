@@ -57,8 +57,9 @@ public class CampaignStoreImpl implements CampaignStore {
                 db.update(
                         "update ai.campaign_rules set lease_token=:t,lease_until=:until,tick=:tick"
                             + " where rule_code in (select rule_code from ai.campaign_rules where"
-                            + " rule_code='ALL' and enabled and next_run_at<=:now and (lease_until"
-                            + " is null or lease_until<=:now) for update skip locked)",
+                            + " rule_code='ALL' and enabled and (next_run_at<=:now or (:demo and"
+                            + " next_run_at>:horizon)) and (lease_until is null or"
+                            + " lease_until<=:now) for update skip locked)",
                         Map.of(
                                 "t",
                                 token,
@@ -67,12 +68,16 @@ public class CampaignStoreImpl implements CampaignStore {
                                 "now",
                                 now,
                                 "tick",
-                                now.getEpochSecond() / 120));
+                                now.getEpochSecond() / 120,
+                                "demo",
+                                config.demo(),
+                                "horizon",
+                                now.plusSeconds(120)));
         if (count == 1) {
             db.update(
                     "update ai.campaign_rules set lease_token=:t,lease_until=:until where"
-                        + " rule_code<>'ALL' and enabled and next_run_at<=:now and (lease_until is"
-                        + " null or lease_until<=:now) and (:daily or rule_code in"
+                        + " rule_code<>'ALL' and enabled and (:demo or next_run_at<=:now) and"
+                        + " (lease_until is null or lease_until<=:now) and (:daily or rule_code in"
                         + " ('SALE_OPEN','CHECKOUT_ABANDON'))",
                     Map.of(
                             "t",
@@ -82,7 +87,9 @@ public class CampaignStoreImpl implements CampaignStore {
                             "now",
                             now,
                             "daily",
-                            config.demo() || now.atZone(ZoneId.of("Asia/Seoul")).getHour() == 10));
+                            config.demo() || now.atZone(ZoneId.of("Asia/Seoul")).getHour() == 10,
+                            "demo",
+                            config.demo()));
         }
         return count == 1 ? token : null;
     }

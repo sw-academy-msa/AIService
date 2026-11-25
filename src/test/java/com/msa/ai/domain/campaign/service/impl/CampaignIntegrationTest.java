@@ -451,4 +451,21 @@ class CampaignIntegrationTest {
         assertThat(db.queryForObject("select count(*) from ai.outbox_events", Integer.class))
                 .isZero();
     }
+
+    @Test
+    void demoModeDoesNotWaitForPersistedNormalDailyCadence() {
+        db.update(
+                "update ai.campaign_rules set next_run_at=?",
+                java.sql.Timestamp.from(clock.instant().plus(Duration.ofDays(1))));
+        UUID token = store.claim();
+        assertThat(token).isNotNull();
+        assertThat(
+                        db.queryForObject(
+                                "select count(*) from ai.campaign_rules where lease_token=?",
+                                Integer.class,
+                                token))
+                .isEqualTo(7);
+        store.complete(token);
+        assertThat(store.claim()).isNull();
+    }
 }
