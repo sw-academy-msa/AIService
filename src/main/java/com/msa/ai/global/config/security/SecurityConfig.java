@@ -93,6 +93,8 @@ public class SecurityConfig {
                                             "/api/v1/ai/analytics/identity",
                                             "/api/v1/ai/analytics/profile")
                                     .hasRole("BUYER");
+                            auth.requestMatchers(HttpMethod.POST, "/api/v1/ai/events")
+                                    .hasRole("BUYER");
                             auth.requestMatchers(HttpMethod.POST, "/api/v1/ai/analytics/identity")
                                     .hasRole("BUYER");
                             auth.requestMatchers(HttpMethod.DELETE, "/api/v1/ai/analytics/identity")

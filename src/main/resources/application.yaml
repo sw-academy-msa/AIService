@@ -41,6 +41,18 @@ server:
   port: ${SERVER_PORT:8086}
   forward-headers-strategy: none
 ai:
+  campaign:
+    mode: ${AI_CAMPAIGN_MODE:OFF}
+    demo-account-ids: ${CAMPAIGN_DEMO_ACCOUNT_IDS:}
+  clients:
+    scheme: ${AI_CLIENT_SCHEME:https}
+    allow-plain-http: ${AI_CLIENT_ALLOW_PLAIN_HTTP:false}
+    account: account-service
+    client-secret: ${AI_CLIENT_SECRET:}
+    service-subject: ${AI_SERVICE_SUBJECT:}
+  behavior:
+    enabled: ${AI_BEHAVIOR_ENABLED:false}
+    lifecycle-enabled: ${AI_BEHAVIOR_LIFECYCLE_ENABLED:false}
   ga:
     enabled: ${AI_GA_ENABLED:false}
     project-id: ${GA_BIGQUERY_PROJECT_ID:}
@@ -53,6 +65,7 @@ ai:
   personalization:
     enabled: ${AI_PERSONALIZATION_ENABLED:false}
     notification-subject: ${NOTIFICATION_SERVICE_SUBJECT:}
+    payment-subject: ${PAYMENT_SERVICE_SUBJECT:}
   consumer-enabled: ${AI_CONSUMER_ENABLED:false}
   worker-enabled: ${AI_WORKER_ENABLED:false}
   outbox:
