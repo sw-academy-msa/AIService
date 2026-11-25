@@ -47,6 +47,9 @@ public class OutboxPublisherImpl implements OutboxPublisher {
             if (failure instanceof InterruptedException) Thread.currentThread().interrupt();
             long delay = Math.min(60, 1L << Math.min(6, event.attempts));
             event.attempts++;
+            if ((event.topic.equals("stockdrop.ai.campaign-targets.v1")
+                            || event.topic.equals("stockdrop.notifications.campaign.v1"))
+                    && event.attempts >= 20) event.failedAt = clock.instant();
             event.nextAttemptAt = clock.instant().plusSeconds(delay);
             // 메시지·본문·스택 대신 전송 원인의 타입만 기록해 민감정보 노출을 막습니다.
             Throwable cause =

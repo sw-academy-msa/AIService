@@ -33,6 +33,8 @@ public class RecommendationServiceImpl implements RecommendationService {
     private final JsonMapper json;
     private final Clock clock;
 
+    private final com.msa.ai.global.config.campaign.CampaignProperties campaignProperties;
+
     public RecommendationServiceImpl(
             PublishedProductRepository products,
             GaSyncStateRepository state,
@@ -41,7 +43,8 @@ public class RecommendationServiceImpl implements RecommendationService {
             OutboxEventRepository outbox,
             GaProperties properties,
             JsonMapper json,
-            Clock clock) {
+            Clock clock,
+            com.msa.ai.global.config.campaign.CampaignProperties campaignProperties) {
         this.products = products;
         this.state = state;
         this.interests = interests;
@@ -50,6 +53,7 @@ public class RecommendationServiceImpl implements RecommendationService {
         this.properties = properties;
         this.json = json;
         this.clock = clock;
+        this.campaignProperties = campaignProperties;
     }
 
     public void accept(Published e) {
@@ -74,6 +78,7 @@ public class RecommendationServiceImpl implements RecommendationService {
     }
 
     public boolean processNext() {
+        if (campaignProperties.enabled()) return false;
         var found = products.next();
         if (found.isEmpty()) return false;
         var product = found.get();
