@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 import java.util.Base64;
 
@@ -25,7 +26,7 @@ public class ImageContentServiceImpl implements ImageContentService {
 
     public String dataUrl(Image image) {
         if (properties.bucket() == null || properties.bucket().isBlank())
-            throw new AnalysisException(AnalysisErrorCode.UNAVAILABLE);
+            throw new AnalysisException(AnalysisErrorCode.UNAVAILABLE, "image.bucket_missing");
         try (var stream =
                 s3.getObject(
                         GetObjectRequest.builder()
@@ -34,16 +35,23 @@ public class ImageContentServiceImpl implements ImageContentService {
                                 .build())) {
             if (stream.response().contentLength() != image.sizeBytes()
                     || !image.contentType().equals(stream.response().contentType()))
-                throw new AnalysisException(AnalysisErrorCode.INVALID);
+                throw new AnalysisException(AnalysisErrorCode.INVALID, "image.metadata_mismatch");
             byte[] bytes = stream.readNBytes((int) image.sizeBytes() + 1);
             if (bytes.length != image.sizeBytes())
-                throw new AnalysisException(AnalysisErrorCode.INVALID);
+                throw new AnalysisException(AnalysisErrorCode.INVALID, "image.size_mismatch");
             return "data:"
                     + image.contentType()
                     + ";base64,"
                     + Base64.getEncoder().encodeToString(bytes);
+        } catch (AnalysisException ex) {
+            throw ex;
+        } catch (S3Exception ex) {
+            // 객체 경로와 공급자 원문은 빼고 S3 상태만 진단에 남깁니다.
+            throw new AnalysisException(AnalysisErrorCode.UNAVAILABLE,
+                    "image.s3.status=" + ex.statusCode());
         } catch (Exception ex) {
-            throw new AnalysisException(AnalysisErrorCode.UNAVAILABLE);
+            throw new AnalysisException(AnalysisErrorCode.UNAVAILABLE,
+                    "image.read.cause=" + ex.getClass().getSimpleName());
         }
     }
 }
