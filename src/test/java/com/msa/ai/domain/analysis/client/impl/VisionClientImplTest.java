@@ -105,7 +105,7 @@ class VisionClientImplTest {
     VisionClientImpl parser() {
         return new VisionClientImpl(
                 RestClient.create(),
-                new VisionProperties(true, "synthetic", "gpt-6.1-sol"),
+                new VisionProperties(true, "synthetic", "gpt-6.1-sol", null),
                 images,
                 json);
     }
@@ -132,7 +132,7 @@ class VisionClientImplTest {
             context.registerBean(ClientProperties.class,
                     () -> new ClientProperties("https", null, null, null, null, null));
             context.registerBean(VisionProperties.class,
-                    () -> new VisionProperties(true, "synthetic-key", "synthetic-model"));
+                    () -> new VisionProperties(true, "synthetic-key", "synthetic-model", null));
             context.registerBean(ImageContentService.class, () -> images);
             context.registerBean(JsonMapper.class, () -> json);
             context.registerBean("openAiClient", RestClient.class, () -> RestClient.builder()
@@ -168,7 +168,7 @@ class VisionClientImplTest {
             when(images.dataUrl(any())).thenReturn("data:image/jpeg;base64,c3ludGhldGlj");
             var client = new VisionClientImpl(RestClient.builder()
                     .baseUrl("http://127.0.0.1:" + server.getAddress().getPort()).build(),
-                    new VisionProperties(true, "synthetic-key", "synthetic-model"), images, json);
+                    new VisionProperties(true, "synthetic-key", "synthetic-model", null), images, json);
             for (int code : List.of(400, 401, 429, 500)) {
                 status.set(code);
                 assertThatThrownBy(() -> client.analyze(request)).isInstanceOfSatisfying(
@@ -227,14 +227,17 @@ class VisionClientImplTest {
                             RestClient.builder()
                                     .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
                                     .build(),
-                            new VisionProperties(true, "synthetic-test-key", "gpt-6.1-sol"),
+                            new VisionProperties(true, "synthetic-test-key", "gpt-6-terra", 0.0),
                             images,
                             json);
             var result = client.analyze(request);
             assertThat(result.questions()).hasSize(1);
             assertThat(result.outcome()).isEqualTo(Outcome.RECOMMENDED);
             var body = json.readTree(captured.get());
-            assertThat(body.path("model").asText()).isEqualTo("gpt-6.1-sol");
+            assertThat(body.path("model").asText()).isEqualTo("gpt-6-terra");
+            assertThat(body.path("temperature").asDouble()).isZero();
+            assertThat(body.has("temperature")).isTrue();
+            assertThat(body.at("/input/0/content/1/detail").asText()).isEqualTo("high");
             var modelInput = json.readTree(body.at("/input/0/content/0/text").asText());
             assertThat(modelInput.path("basicInformation").has("category")).isFalse();
             assertThat(modelInput.path("basicInformation").size()).isEqualTo(3);
@@ -253,6 +256,10 @@ class VisionClientImplTest {
                     .isEqualTo("[\"question\",\"reason\",\"suggestedAnswer\"]");
             assertThat(item.path("properties").has("checkCode")).isFalse();
             String instructions = body.path("instructions").asText();
+            assertThat(instructions).contains("물체 식별 → 허용 범위 확인", "세부(leaf)", "상위(parent)",
+                    "억지로 넣지 않는다", "categoryCriteria에 있을 때만 적용", "칫솔꽂이/칫솔통",
+                    "칫솔은 칫솔꽂이가 아니다", "비누는 비누 받침이 아니다", "비누 받침 leaf")
+                    .doesNotContain("HOUSEHOLD_BATHROOM_01", "HOUSEHOLD_BATHROOM_02");
             assertThat(instructions)
                     .contains("카테고리는 네가 추천한 값으로 정해진다.",
                             "판매자의 카테고리 선택이나 카테고리와 사진, 상품명, 설명의 불일치는 질문하지 않는다.")
@@ -276,7 +283,7 @@ class VisionClientImplTest {
         var client =
                 new VisionClientImpl(
                         RestClient.create(),
-                        new VisionProperties(true, "synthetic", "gpt-6.1-sol"),
+                        new VisionProperties(true, "synthetic", "gpt-6.1-sol", null),
                         images,
                         json);
         assertThatThrownBy(() -> client.parse(request, response("UNKNOWN")))
@@ -415,11 +422,12 @@ class VisionClientImplTest {
                             RestClient.builder()
                                     .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
                                     .build(),
-                            new VisionProperties(true, "synthetic-key", "gpt-6.1-sol"),
+                            new VisionProperties(true, "synthetic-key", "gpt-6.1-sol", null),
                             images,
                             json);
             assertThat(client.analyze(expanded).recommendedCategory()).isEqualTo("CLOTHING");
             var body = json.readTree(captured.get());
+            assertThat(body.has("temperature")).isFalse();
             assertThat(body.at("/text/format/schema/properties/categoryCode/enum").size())
                     .isEqualTo(256);
             var items = body.at("/text/format/schema/properties/questions/items/properties");
