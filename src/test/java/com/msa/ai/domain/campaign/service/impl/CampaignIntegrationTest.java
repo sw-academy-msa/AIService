@@ -12,6 +12,8 @@ import com.msa.ai.domain.personalization.dto.response.PersonalizationMessages.Pu
 import com.msa.ai.domain.personalization.service.*;
 
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.*;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -391,6 +393,80 @@ class CampaignIntegrationTest {
         assertThatThrownBy(() -> behavior.lifecycle(B.toString(), body))
                 .isInstanceOf(com.msa.ai.domain.behavior.exception.BehaviorException.class);
         identities.withdraw(A);
+        assertThat(db.queryForObject("select count(*) from ai.behavior_events", Integer.class))
+                .isZero();
+    }
+
+    // 결제창 진입 후 종결 이벤트의 저장 결과와 재전송 멱등성을 검증합니다.
+    @ParameterizedTest
+    @CsvSource({
+        "FAILED,true,checkout_abandoned",
+        "EXPIRED,true,checkout_abandoned",
+        "FAILED,false,checkout_abandoned",
+        "EXPIRED,false,checkout_abandoned",
+        "CONFIRMED,true,purchase",
+        "HELD,false,begin_checkout"
+    })
+    void lifecycleStoresTerminalOutcomeRegardlessOfPaymentStarted(
+            String phase, boolean paymentStarted, String expected) {
+        UUID order = UUID.randomUUID(), product = UUID.randomUUID();
+        UUID id =
+                UUID.nameUUIDFromBytes(
+                        ("ORDER_LIFECYCLE:" + order + ":" + phase)
+                                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var payload = new LinkedHashMap<String, Object>();
+        payload.put("eventId", id);
+        payload.put("schemaVersion", 1);
+        payload.put("type", "ORDER_LIFECYCLE");
+        payload.put("phase", phase);
+        payload.put("orderId", order);
+        payload.put("buyerId", A);
+        payload.put("productId", product);
+        payload.put("paymentStarted", paymentStarted);
+        payload.put("occurredAt", clock.instant());
+        byte[] body = json.writeValueAsBytes(payload);
+        behavior.lifecycle(A.toString(), body);
+        behavior.lifecycle(A.toString(), body);
+        assertThat(db.queryForList("select name from ai.behavior_events", String.class))
+                .containsExactly(expected);
+        assertThat(db.queryForObject("select id from ai.behavior_events", UUID.class))
+                .isEqualTo(id);
+        assertThat(db.queryForObject("select count from ai.behavior_daily_counters", Integer.class))
+                .isEqualTo(1);
+        payload.put("failureCode", "CHANGED");
+        assertThatThrownBy(() -> behavior.lifecycle(A.toString(), json.writeValueAsBytes(payload)))
+                .isInstanceOf(com.msa.ai.domain.behavior.exception.BehaviorException.class);
+    }
+
+    // 원본에서 발행하지 않는 중간 상태는 행동 이벤트로 저장하지 않습니다.
+    @ParameterizedTest
+    @CsvSource({
+        "RESERVING",
+        "STARTING_PAYMENT",
+        "APPROVING_PAYMENT",
+        "VERIFYING_PAYMENT",
+        "CONFIRMING_STOCK",
+        "COMPENSATING_PAYMENT",
+        "RELEASING_STOCK"
+    })
+    void lifecycleRejectsIntermediatePhase(String phase) {
+        UUID order = UUID.randomUUID();
+        var payload =
+                Map.of(
+                        "eventId",
+                        UUID.nameUUIDFromBytes(
+                                ("ORDER_LIFECYCLE:" + order + ":" + phase)
+                                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                        "schemaVersion", 1,
+                        "type", "ORDER_LIFECYCLE",
+                        "phase", phase,
+                        "orderId", order,
+                        "buyerId", A,
+                        "productId", UUID.randomUUID(),
+                        "paymentStarted", true,
+                        "occurredAt", clock.instant());
+        assertThatThrownBy(() -> behavior.lifecycle(A.toString(), json.writeValueAsBytes(payload)))
+                .isInstanceOf(com.msa.ai.domain.behavior.exception.BehaviorException.class);
         assertThat(db.queryForObject("select count(*) from ai.behavior_events", Integer.class))
                 .isZero();
     }
