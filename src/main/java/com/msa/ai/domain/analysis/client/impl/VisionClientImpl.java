@@ -5,10 +5,13 @@ import com.msa.ai.domain.analysis.dto.response.AiMessages.*;
 import com.msa.ai.domain.analysis.exception.*;
 import com.msa.ai.global.config.openai.VisionProperties;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.nio.charset.StandardCharsets;
@@ -24,7 +27,7 @@ public class VisionClientImpl implements VisionClient {
     private final JsonMapper json;
 
     public VisionClientImpl(
-            RestClient openAiClient,
+            @Qualifier("openAiClient") RestClient openAiClient,
             VisionProperties properties,
             ImageContentService images,
             JsonMapper json) {
@@ -35,7 +38,9 @@ public class VisionClientImpl implements VisionClient {
     }
 
     public Completed analyze(Requested request) {
-        if (!properties.enabled()) throw new AnalysisException(AnalysisErrorCode.UNAVAILABLE);
+        if (!properties.enabled())
+            throw new AnalysisException(AnalysisErrorCode.UNAVAILABLE, "vision.disabled");
+        String stage = "vision.request";
         try {
             var content = new ArrayList<Map<String, Object>>();
             var input = request.input();
@@ -59,6 +64,7 @@ public class VisionClientImpl implements VisionClient {
                                             input.disposalReason(),
                                             "categoryCriteria",
                                             request.categories()))));
+            stage = "vision.image";
             for (var image : input.images())
                 content.add(
                         Map.of(
@@ -68,6 +74,7 @@ public class VisionClientImpl implements VisionClient {
                                 images.dataUrl(image),
                                 "detail",
                                 "high"));
+            stage = "vision.request";
             var body =
                     Map.of(
                             "model",
@@ -92,6 +99,7 @@ public class VisionClientImpl implements VisionClient {
                                             true,
                                             "schema",
                                             schema(request))));
+            stage = "vision.http";
             String raw =
                     client.post()
                             .uri("/responses")
@@ -99,39 +107,47 @@ public class VisionClientImpl implements VisionClient {
                             .body(body)
                             .retrieve()
                             .body(String.class);
+            stage = "vision.response.json";
             return parse(request, raw);
         } catch (AnalysisException ex) {
             throw ex;
+        } catch (RestClientResponseException ex) {
+            // HTTP 오류 본문은 키나 상품 입력을 포함할 수 있어 상태만 보존합니다.
+            throw new AnalysisException(AnalysisErrorCode.UNAVAILABLE,
+                    "vision.http.status=" + ex.getStatusCode().value());
         } catch (Exception ex) {
-            throw new AnalysisException(AnalysisErrorCode.UNAVAILABLE);
+            throw new AnalysisException(AnalysisErrorCode.UNAVAILABLE,
+                    stage + ".cause=" + ex.getClass().getSimpleName());
         }
     }
 
     /** 공급자 응답 상태·거절·필드 길이·허용 분류까지 재검증하고 질문은 최대 5개만 씁니다. */
     Completed parse(Requested request, String raw) {
-        if (raw == null || raw.getBytes(StandardCharsets.UTF_8).length > 131072) fail();
-        var envelope = json.readTree(raw);
-        if (!"completed".equals(envelope.path("status").asText())) fail();
+        if (raw == null || raw.getBytes(StandardCharsets.UTF_8).length > 131072)
+            fail("response.size");
+        var envelope = readJson(raw, "response.json");
+        if (!"completed".equals(envelope.path("status").asText())) fail("response.status");
         String text = null;
         for (var output : envelope.path("output"))
             for (var part : output.path("content")) {
-                if ("refusal".equals(part.path("type").asText())) fail();
+                if ("refusal".equals(part.path("type").asText())) fail("response.refusal");
                 if ("output_text".equals(part.path("type").asText())) {
-                    if (text != null) fail();
+                    if (text != null) fail("response.multiple_texts");
                     text = part.path("text").asText();
                 }
             }
-        if (text == null) fail();
-        var result = json.readTree(text);
-        if (!result.has("categoryCode")) fail();
+        if (text == null) fail("response.missing_text");
+        var result = readJson(text, "result.json");
+        if (!result.has("categoryCode")) fail("result.category_missing");
         var array = result.path("questions");
-        if (!array.isArray() || array.size() > 10) fail();
+        if (!array.isArray() || array.size() > 10) fail("result.questions");
         Outcome outcome = outcome(result.path("outcome").asText());
         // 결과 구분과 카테고리 유무가 어긋나면 모델 응답을 신뢰하지 않습니다.
-        if ((outcome == Outcome.RECOMMENDED) == result.path("categoryCode").isNull()) fail();
+        if ((outcome == Outcome.RECOMMENDED) == result.path("categoryCode").isNull())
+            fail("result.category_outcome");
         // 사진이 불명확하거나 허용 범위 밖이면 분류를 억지로 확정하지 않고 판매자 확인으로 돌립니다.
         if (outcome != Outcome.RECOMMENDED) {
-            if (!array.isEmpty()) fail();
+            if (!array.isEmpty()) fail("result.unrecommended_questions");
             return new Completed(
                     request.requestId(),
                     request.productId(),
@@ -142,7 +158,8 @@ public class VisionClientImpl implements VisionClient {
                     List.of());
         }
         String code = result.path("categoryCode").asText();
-        if (request.categories().stream().noneMatch(c -> c.code().equals(code))) fail();
+        if (request.categories().stream().noneMatch(c -> c.code().equals(code)))
+            fail("result.category_unknown");
         var questions = new ArrayList<Question>();
         for (var q : array) {
             // 모델이 5개를 넘겨도 다시 호출하지 않고 앞 5개만 씁니다.
@@ -154,7 +171,7 @@ public class VisionClientImpl implements VisionClient {
                     || question.length() > 2000
                     || reason.isBlank()
                     || reason.length() > 1000
-                    || answer.length() > 500) fail();
+                    || answer.length() > 500) fail("result.question_fields");
             // 질문은 점검 항목과 묶지 않으며 근거가 없어 비운 예상 답변은 null로 보냅니다.
             questions.add(
                     new Question(
@@ -179,7 +196,7 @@ public class VisionClientImpl implements VisionClient {
         // 실패 종료는 모델 판단이 아니라 작업 시도 상한 정책입니다.
         for (var outcome : Outcome.values())
             if (outcome != Outcome.FAILED && outcome.name().equals(value)) return outcome;
-        throw new AnalysisException(AnalysisErrorCode.INVALID);
+        throw new AnalysisException(AnalysisErrorCode.INVALID, "vision.result.outcome");
     }
 
     private Map<String, Object> schema(Requested request) {
@@ -221,8 +238,17 @@ public class VisionClientImpl implements VisionClient {
         return s == null ? "" : s;
     }
 
-    private void fail() {
-        throw new AnalysisException(AnalysisErrorCode.INVALID);
+    private void fail(String point) {
+        throw new AnalysisException(AnalysisErrorCode.INVALID, "vision." + point);
+    }
+
+    // 파싱 예외의 원문에는 상품 응답이 들어갈 수 있어 실패 위치만 남깁니다.
+    private JsonNode readJson(String raw, String point) {
+        try {
+            return json.readTree(raw);
+        } catch (Exception ex) {
+            throw new AnalysisException(AnalysisErrorCode.INVALID, "vision." + point);
+        }
     }
 
     private static final String PROMPT =

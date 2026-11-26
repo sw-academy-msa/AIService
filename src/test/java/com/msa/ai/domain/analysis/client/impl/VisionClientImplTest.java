@@ -7,9 +7,12 @@ import com.msa.ai.domain.analysis.client.ImageContentService;
 import com.msa.ai.domain.analysis.dto.response.AiMessages.*;
 import com.msa.ai.domain.analysis.exception.AnalysisException;
 import com.msa.ai.global.config.openai.VisionProperties;
+import com.msa.ai.global.config.client.ClientProperties;
+import com.msa.ai.global.config.client.HttpConfig;
 import com.sun.net.httpserver.HttpServer;
 
 import org.junit.jupiter.api.*;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.web.client.RestClient;
 
 import tools.jackson.databind.json.JsonMapper;
@@ -105,6 +108,99 @@ class VisionClientImplTest {
                 new VisionProperties(true, "synthetic", "gpt-6.1-sol"),
                 images,
                 json);
+    }
+
+    /** 내부 상태 확인용 Primary 빈이 있어도 OpenAI 전용 주소와 인증을 사용합니다. */
+    @Test
+    void selectsOpenAiClientEvenWhenHealthCheckClientIsPrimary() throws Exception {
+        var authorization = new AtomicReference<String>();
+        var path = new AtomicReference<String>();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/responses", e -> {
+            e.getRequestBody().readAllBytes();
+            path.set(e.getRequestURI().getPath());
+            authorization.set(e.getRequestHeaders().getFirst("Authorization"));
+            byte[] bytes = response("CLOTHING").getBytes(StandardCharsets.UTF_8);
+            e.getResponseHeaders().set("Content-Type", "application/json");
+            e.sendResponseHeaders(200, bytes.length);
+            e.getResponseBody().write(bytes);
+            e.close();
+        });
+        server.start();
+        try (var context = new AnnotationConfigApplicationContext()) {
+            when(images.dataUrl(any())).thenReturn("data:image/jpeg;base64,c3ludGhldGlj");
+            context.registerBean(ClientProperties.class,
+                    () -> new ClientProperties("https", null, null, null, null, null));
+            context.registerBean(VisionProperties.class,
+                    () -> new VisionProperties(true, "synthetic-key", "synthetic-model"));
+            context.registerBean(ImageContentService.class, () -> images);
+            context.registerBean(JsonMapper.class, () -> json);
+            context.registerBean("openAiClient", RestClient.class, () -> RestClient.builder()
+                    .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
+                    .defaultHeader("Authorization", "Bearer synthetic-key").build());
+            context.register(HttpConfig.class, VisionClientImpl.class);
+            context.refresh();
+            assertThat(context.getBean(RestClient.class))
+                    .isSameAs(context.getBean("healthCheckRestClient"));
+            assertThat(context.getBean(VisionClientImpl.class).analyze(request).recommendedCategory())
+                    .isEqualTo("CLOTHING");
+            assertThat(path.get()).isEqualTo("/responses");
+            assertThat(authorization.get()).isEqualTo("Bearer synthetic-key");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /** 공급자 오류 본문은 버리고 HTTP 상태만 보존하며 이미지는 로컬 대역만 사용합니다. */
+    @Test
+    void reportsHttpStatusWithoutProviderBody() throws Exception {
+        var status = new java.util.concurrent.atomic.AtomicInteger(400);
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/responses", e -> {
+            e.getRequestBody().readAllBytes();
+            byte[] bytes = "secret-key data:image/jpeg;base64,private seller-input".getBytes(StandardCharsets.UTF_8);
+            e.sendResponseHeaders(status.get(), bytes.length);
+            e.getResponseBody().write(bytes);
+            e.close();
+        });
+        server.start();
+        try {
+            when(images.dataUrl(any())).thenReturn("data:image/jpeg;base64,c3ludGhldGlj");
+            var client = new VisionClientImpl(RestClient.builder()
+                    .baseUrl("http://127.0.0.1:" + server.getAddress().getPort()).build(),
+                    new VisionProperties(true, "synthetic-key", "synthetic-model"), images, json);
+            for (int code : List.of(400, 401, 429, 500)) {
+                status.set(code);
+                assertThatThrownBy(() -> client.analyze(request)).isInstanceOfSatisfying(
+                        AnalysisException.class, ex -> {
+                            assertThat(ex.diagnostic()).isEqualTo("vision.http.status=" + code);
+                            assertThat(ex.getMessage()).doesNotContain("secret-key", "private", "seller-input");
+                            assertThat(ex.getCause()).isNull();
+                        });
+            }
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /** 응답 봉투와 결과 JSON의 파싱 위치를 구분하고 본문을 예외에서 제외합니다. */
+    @Test
+    void identifiesSafeParsingAndValidationPoints() {
+        assertThatThrownBy(() -> parser().parse(request, "secret-key malformed-json"))
+                .isInstanceOfSatisfying(AnalysisException.class,
+                        ex -> assertThat(ex.diagnostic()).isEqualTo("vision.response.json"));
+        String envelope = json.writeValueAsString(Map.of("status", "completed", "output",
+                List.of(Map.of("content", List.of(Map.of("type", "output_text", "text", "secret-key"))))));
+        assertThatThrownBy(() -> parser().parse(request, envelope))
+                .isInstanceOfSatisfying(AnalysisException.class,
+                        ex -> assertThat(ex.diagnostic()).isEqualTo("vision.result.json"));
+        assertThatThrownBy(() -> parser().parse(request, response("UNKNOWN")))
+                .isInstanceOfSatisfying(AnalysisException.class,
+                        ex -> assertThat(ex.diagnostic()).isEqualTo("vision.result.category_unknown"));
+        when(images.dataUrl(any())).thenThrow(new AnalysisException(
+                com.msa.ai.domain.analysis.exception.AnalysisErrorCode.UNAVAILABLE, "image.s3.status=403"));
+        assertThatThrownBy(() -> parser().analyze(request)).isInstanceOfSatisfying(
+                AnalysisException.class, ex -> assertThat(ex.diagnostic()).isEqualTo("image.s3.status=403"));
     }
 
     @Test

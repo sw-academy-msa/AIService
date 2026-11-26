@@ -1,6 +1,7 @@
 package com.msa.ai.domain.analysis.service.impl;
 
 import com.msa.ai.domain.analysis.client.VisionClient;
+import com.msa.ai.domain.analysis.exception.AnalysisException;
 import com.msa.ai.domain.analysis.service.*;
 
 import org.slf4j.Logger;
@@ -26,8 +27,11 @@ public class AnalysisWorkerImpl implements AnalysisWorker {
         try {
             jobs.complete(w, vision.analyze(w.request()));
         } catch (Exception ex) {
-            // 키·본문·외부 오류 메시지는 기록하지 않습니다.
-            log.warn("AI 분석 실행 실패: requestId={}, causeType={}", w.id(), ex.getClass().getName());
+            // 원문 메시지 대신 안전한 실패 단계와 상태를 기록합니다.
+            String diagnostic = ex instanceof AnalysisException analysis
+                    ? analysis.diagnostic() : "analysis.unexpected";
+            log.warn("AI 분석 실행 실패: requestId={}, causeType={}, diagnostic={}",
+                    w.id(), ex.getClass().getName(), diagnostic);
             jobs.retry(w);
         }
         return true;
