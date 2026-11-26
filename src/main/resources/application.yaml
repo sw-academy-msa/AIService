@@ -74,6 +74,8 @@ ai:
     enabled: ${AI_VISION_ENABLED:false}
     api-key: ${OPENAI_API_KEY:}
     model: ${OPENAI_VISION_MODEL:gpt-6.1-sol}
+    # 지원이 확인된 모델에서만 0 등으로 설정하며 빈 값이면 전송하지 않습니다.
+    temperature: ${OPENAI_VISION_TEMPERATURE:}
   images:
     bucket: ${PRODUCT_IMAGES_BUCKET:}
     region: ${PRODUCT_IMAGES_REGION:ap-northeast-2}
