@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 
 import com.msa.ai.domain.analysis.dto.response.AiMessages.Image;
 import com.msa.ai.domain.analysis.exception.AnalysisException;
+import com.msa.ai.domain.analysis.exception.AnalysisErrorCode;
 import com.msa.ai.global.config.storage.ImageProperties;
 
 import org.junit.jupiter.api.Test;
@@ -48,9 +49,36 @@ class ImageContentServiceImplTest {
     void rejectsChangedMetadataOrOversizedStream() {
         when(s3.getObject(any(GetObjectRequest.class)))
                 .thenReturn(response(4, new byte[] {1, 2, 3, 4}));
-        assertThatThrownBy(() -> service.dataUrl(image)).isInstanceOf(AnalysisException.class);
+        assertThatThrownBy(() -> service.dataUrl(image)).isInstanceOfSatisfying(
+                AnalysisException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(AnalysisErrorCode.INVALID);
+                    assertThat(ex.diagnostic()).isEqualTo("image.metadata_mismatch");
+                });
         when(s3.getObject(any(GetObjectRequest.class)))
                 .thenReturn(response(3, new byte[] {1, 2, 3, 4}));
-        assertThatThrownBy(() -> service.dataUrl(image)).isInstanceOf(AnalysisException.class);
+        assertThatThrownBy(() -> service.dataUrl(image)).isInstanceOfSatisfying(
+                AnalysisException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(AnalysisErrorCode.INVALID);
+                    assertThat(ex.diagnostic()).isEqualTo("image.size_mismatch");
+                });
+    }
+
+    /** S3 거절과 읽기 오류는 원문이나 객체 경로 없이 구분합니다. */
+    @Test
+    void reportsSafeS3StatusAndReadFailure() {
+        when(s3.getObject(any(GetObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(403)
+                        .message("secret-key product-images/private").build());
+        assertThatThrownBy(() -> service.dataUrl(image)).isInstanceOfSatisfying(
+                AnalysisException.class, ex -> {
+                    assertThat(ex.diagnostic()).isEqualTo("image.s3.status=403");
+                    assertThat(ex.getMessage()).doesNotContain("secret-key", "private");
+                    assertThat(ex.getCause()).isNull();
+                });
+        when(s3.getObject(any(GetObjectRequest.class)))
+                .thenThrow(new IllegalStateException("secret-key"));
+        assertThatThrownBy(() -> service.dataUrl(image)).isInstanceOfSatisfying(
+                AnalysisException.class, ex -> assertThat(ex.diagnostic())
+                        .isEqualTo("image.read.cause=IllegalStateException"));
     }
 }
