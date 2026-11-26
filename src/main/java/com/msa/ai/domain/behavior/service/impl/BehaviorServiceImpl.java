@@ -114,8 +114,9 @@ public class BehaviorServiceImpl implements BehaviorService {
                     switch (phase) {
                         case "HELD" -> "begin_checkout";
                         case "CONFIRMED" -> "purchase";
-                        default ->
-                                e.path("paymentStarted").asBoolean() ? null : "checkout_abandoned";
+                        // 결제창 진입 여부와 관계없이 미확정 종결 주문을 이탈로 기록합니다.
+                        case "FAILED", "EXPIRED" -> "checkout_abandoned";
+                        default -> null;
                     };
             if (name != null)
                 save(
